@@ -17,7 +17,7 @@ export function RestTimer({ duration, startSignal, label }: RestTimerProps) {
     if (!isRunning) {
       setRemaining(duration);
     }
-  }, [duration, isRunning]);
+  }, [duration]);
 
   useEffect(() => {
     if (!isRunning) return;
