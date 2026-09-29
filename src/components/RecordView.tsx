@@ -1,4 +1,5 @@
 import {
+  ArrowRight,
   CalendarDays,
   Check,
   ChevronDown,
@@ -7,16 +8,22 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import type { FailureType, WorkoutSession, WorkoutSet } from "../types";
+import { useEffect, useMemo, useRef, useState } from "react";
+import type {
+  ExercisePreset,
+  ExerciseSetTemplate,
+  FailureType,
+  WorkoutSession,
+  WorkoutSet,
+} from "../types";
 import {
-  buildWorkoutSets,
   clamp,
+  createWorkoutSet,
+  EXERCISE_REST_SECONDS,
   FAILURE_LABELS,
   formatCompactNumber,
   formatDateLabel,
   formatNumber,
-  getRecentExerciseNames,
   getSessionStats,
   groupSets,
   REST_OPTIONS,
@@ -25,11 +32,12 @@ import {
 import { RestTimer } from "./RestTimer";
 
 interface RecordViewProps {
-  sessions: WorkoutSession[];
+  exerciseOptions: ExercisePreset[];
   activeDate: string;
   session?: WorkoutSession;
   onDateChange: (date: string) => void;
   onAddSets: (date: string, title: string, sets: WorkoutSet[]) => void;
+  onSaveExercisePreset: (preset: Omit<ExercisePreset, "updatedAt">) => void;
   onUpdateMeta: (date: string, patch: { title?: string; notes?: string }) => void;
   onUpdateSet: (date: string, setId: string, patch: Partial<WorkoutSet>) => void;
   onDeleteSet: (date: string, setId: string) => void;
@@ -40,11 +48,12 @@ interface RecordViewProps {
 const REST_CHOICES = [45, ...REST_OPTIONS];
 
 export function RecordView({
-  sessions,
   activeDate,
   session,
+  exerciseOptions,
   onDateChange,
   onAddSets,
+  onSaveExercisePreset,
   onUpdateMeta,
   onUpdateSet,
   onDeleteSet,
@@ -52,44 +61,147 @@ export function RecordView({
   onToast,
 }: RecordViewProps) {
   const [title, setTitle] = useState(session?.title ?? "训练");
-  const [notes, setNotes] = useState(session?.notes ?? "");
   const [exercise, setExercise] = useState("");
   const [weight, setWeight] = useState(40);
-  const [reps, setReps] = useState(10);
+  const [reps, setReps] = useState(12);
   const [setCount, setSetCount] = useState(4);
-  const [failureType, setFailureType] = useState<FailureType>("set");
+  const [failureType, setFailureType] = useState<FailureType>("exercise");
   const [restSeconds, setRestSeconds] = useState(90);
+  const [setTemplates, setSetTemplates] = useState<ExerciseSetTemplate[]>([]);
+  const [previousReminder, setPreviousReminder] = useState("");
+  const [nextNoteDraft, setNextNoteDraft] = useState("");
+  const [completedSets, setCompletedSets] = useState(0);
   const [timerSignal, setTimerSignal] = useState(0);
+  const [exerciseFocusSignal, setExerciseFocusSignal] = useState(0);
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const [showNotes, setShowNotes] = useState(false);
-  const recentExercises = useMemo(() => getRecentExerciseNames(sessions), [sessions]);
   const stats = session ? getSessionStats(session) : { sessionCount: 0, setCount: 0, totalVolume: 0, totalReps: 0 };
   const groups = useMemo(() => groupSets(session?.sets ?? []), [session?.sets]);
+  const plannedSetCount = clamp(Math.round(setCount), 1, 20);
+  const isExerciseComplete = completedSets >= plannedSetCount;
+  const timerDuration = isExerciseComplete ? EXERCISE_REST_SECONDS : restSeconds;
+  const timerLabel = isExerciseComplete ? "动作间休息" : "组间休息";
 
   useEffect(() => {
     setTitle(session?.title ?? "训练");
-    setNotes(session?.notes ?? "");
     setExercise("");
-  }, [activeDate, session?.id]);
+    setSetTemplates([]);
+    setPreviousReminder("");
+    setNextNoteDraft("");
+    setCompletedSets(0);
+    setExpandedGroup(null);
+  }, [activeDate]);
 
-  const handleAdd = () => {
+  const currentPreset = (noteOverride?: string): Omit<ExercisePreset, "updatedAt"> => {
+    const templates = ensureSetTemplates(setTemplates, plannedSetCount, { weight, reps });
+    const reminder =
+      noteOverride ??
+      (completedSets === 0 && previousReminder && !nextNoteDraft ? previousReminder : nextNoteDraft.trim());
+    return {
+      name: exercise.trim(),
+      setCount: plannedSetCount,
+      failureType,
+      restSeconds,
+      weight: Math.max(0, weight),
+      reps: Math.max(1, Math.round(reps)),
+      sets: templates,
+      nextNote: reminder,
+    };
+  };
+
+  const handleExerciseNameChange = (name: string) => {
+    setExercise(name);
+    setSetTemplates([]);
+    setPreviousReminder("");
+    setNextNoteDraft("");
+    setCompletedSets(0);
+  };
+
+  const handleExerciseBlur = () => {
+    if (exercise.trim()) onSaveExercisePreset(currentPreset());
+  };
+
+  const applyExercisePreset = (preset: ExercisePreset) => {
+    const templates = ensureSetTemplates(preset.sets, preset.setCount, {
+      weight: preset.weight,
+      reps: preset.reps,
+    });
+    const firstTemplate = templates[0] ?? { weight: preset.weight, reps: preset.reps };
+    setExercise(preset.name);
+    setSetCount(clamp(Math.round(preset.setCount), 1, 20));
+    setFailureType(preset.failureType);
+    setRestSeconds(preset.restSeconds);
+    setSetTemplates(templates);
+    setWeight(Math.max(0, firstTemplate.weight));
+    setReps(Math.max(1, Math.round(firstTemplate.reps)));
+    setPreviousReminder(preset.nextNote);
+    setNextNoteDraft("");
+    setCompletedSets(0);
+    setShowNotes(false);
+  };
+
+  const handleAddSet = () => {
     const cleanExercise = exercise.trim();
     if (!cleanExercise) {
-      onToast("先填写训练项目");
+      onToast("先选择或输入训练项目");
+      return;
+    }
+    if (isExerciseComplete) {
+      onToast("本动作已达到目标组数");
       return;
     }
 
-    const sets = buildWorkoutSets(
+    const nextCompleted = completedSets + 1;
+    const isLastSet = nextCompleted >= plannedSetCount;
+    const updatedTemplates = ensureSetTemplates(setTemplates, plannedSetCount, { weight, reps });
+    updatedTemplates[completedSets] = {
+      weight: Math.max(0, weight),
+      reps: Math.max(1, Math.round(reps)),
+    };
+    const currentSet = createWorkoutSet(
       cleanExercise,
       Math.max(0, weight),
       Math.max(1, Math.round(reps)),
-      clamp(Math.round(setCount), 1, 20),
       failureType,
-      restSeconds,
+      isLastSet ? EXERCISE_REST_SECONDS : restSeconds,
     );
-    onAddSets(activeDate, title, sets);
-    onToast(`已添加 ${sets.length} 组 ${cleanExercise}`);
+
+    onAddSets(activeDate, title, [currentSet]);
+    onSaveExercisePreset({
+      ...currentPreset(nextNoteDraft.trim()),
+      sets: updatedTemplates,
+    });
+    setSetTemplates(updatedTemplates);
+    if (completedSets === 0) setPreviousReminder("");
+    setCompletedSets(nextCompleted);
     setTimerSignal((value) => value + 1);
     setShowNotes(false);
+
+    if (!isLastSet) {
+      const nextTemplate = updatedTemplates[nextCompleted] ?? {
+        weight: Math.max(0, weight),
+        reps: Math.max(1, Math.round(reps)),
+      };
+      setWeight(Math.max(0, nextTemplate.weight));
+      setReps(Math.max(1, Math.round(nextTemplate.reps)));
+    }
+
+    if (isLastSet) {
+      onToast(`已完成 ${nextCompleted}/${plannedSetCount} 组，开始 5 分钟动作间休息`);
+    } else {
+      onToast(`已记录第 ${nextCompleted} 组，开始组间休息`);
+    }
+  };
+
+  const moveToNextExercise = () => {
+    setExercise("");
+    setSetTemplates([]);
+    setPreviousReminder("");
+    setNextNoteDraft("");
+    setCompletedSets(0);
+    setShowNotes(false);
+    setExerciseFocusSignal((value) => value + 1);
+    onToast("请选择下个动作");
   };
 
   return (
@@ -141,117 +253,183 @@ export function RecordView({
       <section className="entry-panel">
         <div className="section-heading">
           <div>
-            <span className="eyebrow">QUICK SET</span>
-            <h2>添加训练</h2>
+            <span className="eyebrow">EXERCISE PLAN</span>
+            <h2>动作计划</h2>
           </div>
           <Dumbbell size={22} />
         </div>
 
         <label className="field">
           <span>训练项目</span>
-          <input
+          <ExerciseCombobox
             value={exercise}
-            onChange={(event) => setExercise(event.target.value)}
-            placeholder="例如：深蹲"
-            autoComplete="off"
+            options={exerciseOptions}
+            focusSignal={exerciseFocusSignal}
+            onChange={handleExerciseNameChange}
+            onSelect={applyExercisePreset}
+            onBlur={handleExerciseBlur}
           />
         </label>
 
-        <div className="exercise-chips" aria-label="最近动作">
-          {recentExercises.slice(0, 7).map((name) => (
-            <button key={name} type="button" className="chip" onClick={() => setExercise(name)}>
-              {name}
+        <div className="plan-section">
+          <div className="plan-set-count-row">
+            <span />
+            <div className="plan-stepper">
+              <NumberStepper
+                label="本次组数"
+                value={plannedSetCount}
+                unit="组"
+                step={1}
+                minimum={1}
+                maximum={20}
+                onChange={(value) => {
+                  setSetCount(value);
+                  setSetTemplates((current) =>
+                    ensureSetTemplates(current, clamp(Math.round(value), 1, 20), { weight, reps }),
+                  );
+                  if (completedSets > value) setCompletedSets(0);
+                }}
+              />
+            </div>
+            <span className="plan-progress">
+              {completedSets}/{plannedSetCount} 组
+            </span>
+          </div>
+
+          <div className="field">
+            <span>力竭方式</span>
+            <div className="segmented-control">
+              {(["set", "exercise"] as FailureType[]).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={failureType === value ? "is-active" : ""}
+                  onClick={() => setFailureType(value)}
+                  aria-pressed={failureType === value}
+                >
+                  {failureType === value && <Check size={15} />}
+                  {FAILURE_LABELS[value]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="field">
+            <span>组间休息</span>
+            <div className="rest-options">
+              {REST_CHOICES.map((seconds) => (
+                <button
+                  key={seconds}
+                  type="button"
+                  className={restSeconds === seconds ? "is-active" : ""}
+                  onClick={() => setRestSeconds(seconds)}
+                  aria-pressed={restSeconds === seconds}
+                >
+                  {formatRestLabel(seconds)}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="current-set-section">
+          <div className="subsection-heading">
+            <span className="current-set-heading">
+              <strong>本次这一组</strong>
+              {previousReminder && completedSets === 0 && (
+                <em>上次说{formatReminder(previousReminder)}！</em>
+              )}
+            </span>
+            <span className={`set-number ${isExerciseComplete ? "is-complete" : ""}`}>
+              {isExerciseComplete ? "已完成" : `第 ${completedSets + 1} 组`}
+            </span>
+          </div>
+
+          <div className="stepper-grid stepper-grid--two">
+            <NumberStepper
+              label="使用重量"
+              value={weight}
+              unit="kg"
+              step={2.5}
+              minimum={0}
+              maximum={1000}
+              onChange={setWeight}
+            />
+            <NumberStepper
+              label="这一组次数"
+              value={reps}
+              unit="次"
+              step={1}
+              minimum={1}
+              maximum={100}
+              onChange={setReps}
+            />
+          </div>
+
+          <div className="set-progress" aria-label={`已完成 ${completedSets} 组，共 ${plannedSetCount} 组`}>
+            {Array.from({ length: plannedSetCount }, (_, index) => (
+              <span
+                key={index}
+                className={index < completedSets ? "is-done" : index === completedSets ? "is-current" : ""}
+              />
+            ))}
+          </div>
+
+          <button
+            type="button"
+            className="primary-button"
+            onClick={handleAddSet}
+            disabled={isExerciseComplete}
+          >
+            <Plus size={20} />
+            {isExerciseComplete ? "本动作已完成" : `添加第 ${completedSets + 1} 组`}
+          </button>
+
+          {isExerciseComplete && (
+            <button type="button" className="next-exercise-button" onClick={moveToNextExercise}>
+              下个动作
+              <ArrowRight size={16} />
             </button>
-          ))}
+          )}
         </div>
-
-        <div className="stepper-grid">
-          <NumberStepper
-            label="使用重量"
-            value={weight}
-            unit="kg"
-            step={2.5}
-            minimum={0}
-            maximum={1000}
-            onChange={setWeight}
-          />
-          <NumberStepper
-            label="每组次数"
-            value={reps}
-            unit="次"
-            step={1}
-            minimum={1}
-            maximum={100}
-            onChange={setReps}
-          />
-          <NumberStepper
-            label="本次组数"
-            value={setCount}
-            unit="组"
-            step={1}
-            minimum={1}
-            maximum={20}
-            onChange={setSetCount}
-          />
-        </div>
-
-        <div className="field">
-          <span>力竭方式</span>
-          <div className="segmented-control">
-            {(["set", "exercise"] as FailureType[]).map((value) => (
-              <button
-                key={value}
-                type="button"
-                className={failureType === value ? "is-active" : ""}
-                onClick={() => setFailureType(value)}
-                aria-pressed={failureType === value}
-              >
-                {failureType === value && <Check size={15} />}
-                {FAILURE_LABELS[value]}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="field">
-          <span>组间休息</span>
-          <div className="rest-options">
-            {REST_CHOICES.map((seconds) => (
-              <button
-                key={seconds}
-                type="button"
-                className={restSeconds === seconds ? "is-active" : ""}
-                onClick={() => setRestSeconds(seconds)}
-                aria-pressed={restSeconds === seconds}
-              >
-                {seconds < 60 ? `${seconds}秒` : `${seconds / 60}分`}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <button type="button" className="primary-button" onClick={handleAdd}>
-          <Plus size={20} />
-          添加 {clamp(Math.round(setCount), 1, 20)} 组
-        </button>
 
         <button type="button" className="notes-toggle" onClick={() => setShowNotes((value) => !value)}>
-          <span>训练备注</span>
+          <span>
+            训练备注
+            {nextNoteDraft && <em>{nextNoteDraft}</em>}
+          </span>
           <ChevronDown size={17} className={showNotes ? "is-open" : ""} />
         </button>
         {showNotes && (
-          <textarea
-            className="notes-input"
-            value={notes}
-            onChange={(event) => setNotes(event.target.value)}
-            onBlur={() => session && onUpdateMeta(activeDate, { notes })}
-            placeholder="今天的状态、疼痛或计划调整"
-            rows={3}
-          />
+          <>
+            <div className="note-shortcuts">
+              <button
+                type="button"
+                onClick={() => {
+                  setNextNoteDraft("下次加重");
+                  onSaveExercisePreset(currentPreset("下次加重"));
+                }}
+              >
+                下次加重
+              </button>
+            </div>
+            <textarea
+              className="notes-input"
+              value={nextNoteDraft}
+              onChange={(event) => setNextNoteDraft(event.target.value)}
+              onBlur={() => onSaveExercisePreset(currentPreset())}
+              placeholder="这个动作下次的提醒"
+              rows={3}
+            />
+          </>
         )}
       </section>
 
-      <RestTimer duration={restSeconds} startSignal={timerSignal} />
+      <RestTimer
+        duration={timerDuration}
+        startSignal={timerSignal}
+        label={timerLabel}
+      />
 
       <section className="sets-section">
         <div className="section-heading">
@@ -266,21 +444,40 @@ export function RecordView({
           <div className="empty-state">
             <Dumbbell size={28} />
             <strong>这一天还没有训练记录</strong>
-            <span>从上面填写一个动作，记录会立即保存在本机。</span>
+            <span>从上面完成一组后，记录会立即保存在本机。</span>
           </div>
         ) : (
           <div className="exercise-groups">
             {groups.map((group) => {
               const volume = group.sets.reduce((total, set) => total + set.weight * set.reps, 0);
+              const uniqueWeights = [...new Set(group.sets.map((set) => set.weight))];
+              const weightLabel =
+                uniqueWeights.length === 1
+                  ? `${formatNumber(uniqueWeights[0])}kg`
+                  : `${uniqueWeights.map((weight) => formatNumber(weight)).join("/")}kg`;
+              const repsLabel = group.sets.map((set) => set.reps).join("/");
+              const isExpanded = expandedGroup === group.exercise;
               return (
                 <section className="exercise-group" key={group.exercise}>
                   <header className="exercise-group__header">
-                    <div>
-                      <h3>{group.exercise}</h3>
-                      <span>
-                        {group.sets.length} 组 · {formatNumber(volume, 0)} kg
+                    <button
+                      type="button"
+                      className="exercise-group__summary"
+                      onClick={() => setExpandedGroup(isExpanded ? null : group.exercise)}
+                      aria-expanded={isExpanded}
+                    >
+                      <span className="exercise-group__title">
+                        <strong>{group.exercise}</strong>
+                        <small>
+                          {group.sets.length} 组 · {formatNumber(volume, 0)} kg
+                        </small>
                       </span>
-                    </div>
+                      <span className="exercise-group__thumbnail">
+                        <span>重量 {weightLabel}</span>
+                        <span>次数 {repsLabel}</span>
+                      </span>
+                      <ChevronDown size={18} className={isExpanded ? "is-open" : ""} />
+                    </button>
                     <button
                       type="button"
                       className="icon-button"
@@ -295,17 +492,19 @@ export function RecordView({
                     </button>
                   </header>
 
-                  <div className="set-list">
-                    {group.sets.map((set, index) => (
-                      <SetRow
-                        key={set.id}
-                        index={index}
-                        set={set}
-                        onUpdate={(patch) => onUpdateSet(activeDate, set.id, patch)}
-                        onDelete={() => onDeleteSet(activeDate, set.id)}
-                      />
-                    ))}
-                  </div>
+                  {isExpanded && (
+                    <div className="set-list">
+                      {group.sets.map((set, index) => (
+                        <SetRow
+                          key={set.id}
+                          index={index}
+                          set={set}
+                          onUpdate={(patch) => onUpdateSet(activeDate, set.id, patch)}
+                          onDelete={() => onDeleteSet(activeDate, set.id)}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </section>
               );
             })}
@@ -313,6 +512,117 @@ export function RecordView({
         )}
       </section>
     </main>
+  );
+}
+
+interface ExerciseComboboxProps {
+  value: string;
+  options: ExercisePreset[];
+  focusSignal: number;
+  onChange: (value: string) => void;
+  onSelect: (preset: ExercisePreset) => void;
+  onBlur: () => void;
+}
+
+function ExerciseCombobox({
+  value,
+  options,
+  focusSignal,
+  onChange,
+  onSelect,
+  onBlur,
+}: ExerciseComboboxProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredOptions = options
+    .filter((option) => !normalizedQuery || option.name.toLowerCase().includes(normalizedQuery))
+    .slice(0, 8);
+
+  useEffect(() => {
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!wrapperRef.current?.contains(event.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePress);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePress);
+  }, []);
+
+  useEffect(() => {
+    if (focusSignal === 0) return;
+    setQuery("");
+    setIsOpen(true);
+    inputRef.current?.focus();
+    wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [focusSignal]);
+
+  return (
+    <div className="exercise-combobox" ref={wrapperRef}>
+      <div className="exercise-combobox__control">
+        <input
+          ref={inputRef}
+          role="combobox"
+          aria-expanded={isOpen}
+          aria-controls="exercise-options"
+          value={value}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            onChange(event.target.value);
+          }}
+          onFocus={() => {
+            setQuery("");
+            setIsOpen(true);
+          }}
+          onBlur={onBlur}
+          placeholder="例如：哑铃卧推"
+          autoComplete="off"
+        />
+        <button
+          type="button"
+          aria-label="展开训练项目列表"
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={() => {
+            setQuery("");
+            setIsOpen((current) => !current);
+          }}
+        >
+          <ChevronDown size={18} className={isOpen ? "is-open" : ""} />
+        </button>
+      </div>
+
+      {isOpen && (
+        <div className="exercise-combobox__menu" id="exercise-options" role="listbox">
+          {filteredOptions.length === 0 ? (
+            <div className="exercise-combobox__empty">输入新名称并完成一组后会自动记住</div>
+          ) : (
+            filteredOptions.map((option) => (
+              <button
+                key={option.name}
+                type="button"
+                role="option"
+                aria-selected={option.name === value}
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  onSelect(option);
+                  setQuery("");
+                  setIsOpen(false);
+                }}
+              >
+                <span>
+                  <strong>{option.name}</strong>
+                  <small>
+                    {option.setCount}组 · {formatNumber(option.weight)}kg × {option.reps} ·{" "}
+                    {formatRestLabel(option.restSeconds)} · {FAILURE_LABELS[option.failureType]}
+                  </small>
+                </span>
+                {option.name === value && <Check size={17} />}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -428,11 +738,11 @@ function SetRow({ index, set, onUpdate, onDelete }: SetRowProps) {
               onChange={(event) => onUpdate({ restSeconds: Number(event.target.value) })}
               aria-label="组间休息"
             >
-              {[...new Set([45, ...REST_CHOICES, set.restSeconds])]
+              {[...new Set([45, ...REST_CHOICES, EXERCISE_REST_SECONDS, set.restSeconds])]
                 .sort((a, b) => a - b)
                 .map((seconds) => (
                   <option key={seconds} value={seconds}>
-                    {seconds < 60 ? `${seconds}秒` : `${seconds / 60}分`}
+                    {formatRestLabel(seconds)}
                   </option>
                 ))}
             </select>
@@ -441,4 +751,29 @@ function SetRow({ index, set, onUpdate, onDelete }: SetRowProps) {
       </div>
     </div>
   );
+}
+
+function formatRestLabel(seconds: number): string {
+  if (seconds < 60) return `${seconds}秒`;
+  if (seconds % 60 === 0) return `${seconds / 60}分`;
+  if (seconds % 60 === 30) return `${Math.floor(seconds / 60)}.5分`;
+  return `${Math.floor(seconds / 60)}分${seconds % 60}秒`;
+}
+
+function ensureSetTemplates(
+  templates: ExerciseSetTemplate[],
+  setCount: number,
+  fallback: ExerciseSetTemplate,
+): ExerciseSetTemplate[] {
+  const count = clamp(Math.round(setCount), 1, 20);
+  const next = templates.slice(0, count).map((template) => ({ ...template }));
+  while (next.length < count) {
+    next.push({ ...(next.at(-1) ?? fallback) });
+  }
+  return next;
+}
+
+function formatReminder(note: string): string {
+  const trimmed = note.trim();
+  return trimmed.startsWith("下次") ? trimmed.replace(/^下次/, "这次") : trimmed;
 }

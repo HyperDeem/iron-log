@@ -10,18 +10,27 @@ import {
   Upload,
 } from "lucide-react";
 import { useRef, useState } from "react";
-import type { WorkoutSession } from "../types";
+import type { BackupData, ExercisePreset, WorkoutSession } from "../types";
 import { exportBackup, exportWorkoutCsv, exportWorkoutWorkbook, importWorkoutFile } from "../lib/excel";
 import { parseBackup } from "../lib/storage";
 
 interface DataViewProps {
   sessions: WorkoutSession[];
+  exercisePresets: ExercisePreset[];
   onImportSessions: (sessions: WorkoutSession[], message: string, mode: "merge" | "replace") => void;
+  onRestoreBackup: (backup: BackupData, message: string) => void;
   onClear: () => void;
   onToast: (message: string) => void;
 }
 
-export function DataView({ sessions, onImportSessions, onClear, onToast }: DataViewProps) {
+export function DataView({
+  sessions,
+  exercisePresets,
+  onImportSessions,
+  onRestoreBackup,
+  onClear,
+  onToast,
+}: DataViewProps) {
   const tableInputRef = useRef<HTMLInputElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -43,9 +52,9 @@ export function DataView({ sessions, onImportSessions, onClear, onToast }: DataV
   const handleBackupImport = async (file?: File) => {
     if (!file) return;
     try {
-      const sessionsFromBackup = parseBackup(await file.text());
+      const backup = parseBackup(await file.text());
       if (!window.confirm(`用备份替换本机现有 ${sessions.length} 次训练？`)) return;
-      onImportSessions(sessionsFromBackup, `已恢复 ${sessionsFromBackup.length} 次训练`, "replace");
+      onRestoreBackup(backup, `已恢复 ${backup.sessions.length} 次训练`);
     } catch (error) {
       onToast(error instanceof Error ? error.message : "备份文件无法读取");
     } finally {
@@ -142,7 +151,7 @@ export function DataView({ sessions, onImportSessions, onClear, onToast }: DataV
             type="button"
             className="secondary-button"
             disabled={sessions.length === 0}
-            onClick={() => exportBackup(sessions)}
+            onClick={() => exportBackup(sessions, exercisePresets)}
           >
             <Download size={18} />
             备份为 JSON

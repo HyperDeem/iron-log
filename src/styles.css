@@ -335,6 +335,119 @@ h3 {
   box-shadow: 0 0 0 3px rgba(45, 106, 95, 0.1);
 }
 
+.exercise-combobox {
+  position: relative;
+}
+
+.exercise-combobox__control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px;
+  align-items: stretch;
+  min-height: 48px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+}
+
+.exercise-combobox__control:focus-within {
+  border-color: var(--green);
+  box-shadow: 0 0 0 3px rgba(45, 106, 95, 0.1);
+}
+
+.exercise-combobox__control input {
+  width: 100%;
+  padding: 12px 13px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+}
+
+.exercise-combobox__control button {
+  display: grid;
+  padding: 0;
+  place-items: center;
+  color: var(--green);
+  background: #edf1eb;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0 6px 6px 0;
+}
+
+.exercise-combobox__control button svg {
+  transition: transform 160ms ease;
+}
+
+.exercise-combobox__control button svg.is-open {
+  transform: rotate(180deg);
+}
+
+.exercise-combobox__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  z-index: 50;
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 5px;
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 18px 42px rgba(23, 32, 27, 0.18);
+}
+
+.exercise-combobox__menu > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 20px;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  text-align: left;
+}
+
+.exercise-combobox__menu > button:active,
+.exercise-combobox__menu > button[aria-selected="true"] {
+  background: #eef2ec;
+}
+
+.exercise-combobox__menu > button > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.exercise-combobox__menu strong,
+.exercise-combobox__menu small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exercise-combobox__menu strong {
+  font-size: 13px;
+}
+
+.exercise-combobox__menu small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.exercise-combobox__menu > button > svg {
+  color: var(--accent);
+}
+
+.exercise-combobox__empty {
+  padding: 14px 11px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .exercise-chips {
   display: flex;
   gap: 7px;
@@ -364,6 +477,116 @@ h3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
+}
+
+.stepper-grid--two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.plan-section,
+.current-set-section {
+  display: grid;
+  gap: 14px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.subsection-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.current-set-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.current-set-heading em {
+  overflow: hidden;
+  padding: 4px 7px;
+  color: var(--accent-dark);
+  background: #f7e3da;
+  border-radius: 5px;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subsection-heading > strong {
+  font-size: 15px;
+}
+
+.plan-progress,
+.set-number {
+  padding: 6px 8px;
+  color: var(--green);
+  background: var(--green-soft);
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.set-number.is-complete {
+  color: var(--accent-dark);
+  background: #f7e3da;
+}
+
+.plan-set-count-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.plan-stepper {
+  width: 160px;
+  max-width: 100%;
+}
+
+.plan-set-count-row > .plan-progress {
+  justify-self: end;
+}
+
+.set-progress {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18px, 1fr));
+  gap: 6px;
+}
+
+.set-progress span {
+  height: 5px;
+  background: #dfe4de;
+  border-radius: 3px;
+}
+
+.set-progress span.is-current {
+  background: var(--accent);
+}
+
+.set-progress span.is-done {
+  background: var(--green);
+}
+
+.next-exercise-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: white;
+  background: var(--ink);
+  border: 1px solid var(--ink);
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 800;
+  width: 100%;
 }
 
 .number-stepper {
@@ -527,6 +750,41 @@ input[type="number"]::-webkit-outer-spin-button {
   font-weight: 700;
 }
 
+.notes-toggle > span {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.notes-toggle em {
+  overflow: hidden;
+  padding: 3px 6px;
+  color: var(--accent-dark);
+  background: #f7e3da;
+  border-radius: 5px;
+  font-size: 10px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-shortcuts {
+  display: flex;
+  gap: 7px;
+  margin-top: -8px;
+}
+
+.note-shortcuts button {
+  padding: 7px 10px;
+  color: var(--accent-dark);
+  background: #f7e3da;
+  border: 0;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .notes-toggle svg,
 .history-session__summary > svg {
   transition: transform 160ms ease;
@@ -667,22 +925,68 @@ input[type="number"]::-webkit-outer-spin-button {
 }
 
 .exercise-group__header {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 48px;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 13px 14px;
   border-bottom: 1px solid var(--line);
 }
 
-.exercise-group__header > div {
+.exercise-group__summary {
   display: grid;
-  gap: 4px;
+  grid-template-columns: minmax(86px, 0.9fr) minmax(0, 1.35fr) 18px;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 12px 8px 12px 14px;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  text-align: left;
 }
 
-.exercise-group__header span {
+.exercise-group__summary > svg {
   color: var(--muted);
-  font-size: 11px;
+  transition: transform 160ms ease;
+}
+
+.exercise-group__summary > svg.is-open {
+  transform: rotate(180deg);
+}
+
+.exercise-group__title {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.exercise-group__title strong,
+.exercise-group__title small,
+.exercise-group__thumbnail span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.exercise-group__title strong {
+  font-size: 15px;
+}
+
+.exercise-group__title small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.exercise-group__thumbnail {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.exercise-group__header > .icon-button {
+  margin-right: 8px;
 }
 
 .set-list {

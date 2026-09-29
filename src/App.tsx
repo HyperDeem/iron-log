@@ -6,12 +6,18 @@ import { HistoryView } from "./components/HistoryView";
 import { RecordView } from "./components/RecordView";
 import { Toast } from "./components/Toast";
 import { exportWorkoutWorkbook } from "./lib/excel";
-import { loadSessions, saveSessions } from "./lib/storage";
-import { createWorkoutSession, toDateKey } from "./lib/workout";
-import type { AppView, WorkoutSession, WorkoutSet } from "./types";
+import {
+  loadExercisePresets,
+  loadSessions,
+  saveExercisePresets,
+  saveSessions,
+} from "./lib/storage";
+import { createWorkoutSession, getExercisePresetOptions, toDateKey, upsertExercisePreset } from "./lib/workout";
+import type { AppView, BackupData, ExercisePreset, WorkoutSession, WorkoutSet } from "./types";
 
 export default function App() {
   const [sessions, setSessions] = useState<WorkoutSession[]>(loadSessions);
+  const [exercisePresets, setExercisePresets] = useState<ExercisePreset[]>(loadExercisePresets);
   const [activeView, setActiveView] = useState<AppView>("record");
   const [activeDate, setActiveDate] = useState(toDateKey());
   const [toast, setToast] = useState("");
@@ -20,10 +26,18 @@ export default function App() {
     () => sessions.find((session) => session.date === activeDate),
     [activeDate, sessions],
   );
+  const exerciseOptions = useMemo(
+    () => getExercisePresetOptions(sessions, exercisePresets),
+    [exercisePresets, sessions],
+  );
 
   useEffect(() => {
     saveSessions(sessions);
   }, [sessions]);
+
+  useEffect(() => {
+    saveExercisePresets(exercisePresets);
+  }, [exercisePresets]);
 
   useEffect(() => {
     if (!toast) return;
@@ -57,6 +71,10 @@ export default function App() {
         ),
       );
     });
+  };
+
+  const saveExercisePreset = (preset: Omit<ExercisePreset, "updatedAt">) => {
+    setExercisePresets((current) => upsertExercisePreset(current, preset));
   };
 
   const updateSessionMeta = (date: string, patch: { title?: string; notes?: string }) => {
@@ -131,9 +149,17 @@ export default function App() {
     setActiveView("history");
   };
 
+  const restoreBackup = (backup: BackupData, message: string) => {
+    setSessions(sortSessions(backup.sessions));
+    setExercisePresets(backup.exercisePresets);
+    setToast(message);
+    setActiveView("history");
+  };
+
   const clearSessions = () => {
     setSessions([]);
-    setToast("本机训练数据已清空");
+    setExercisePresets([]);
+    setToast("本机训练数据和动作预设已清空");
   };
 
   const editHistoryDate = (date: string) => {
@@ -158,11 +184,12 @@ export default function App() {
 
       {activeView === "record" && (
         <RecordView
-          sessions={sessions}
           activeDate={activeDate}
           session={activeSession}
+          exerciseOptions={exerciseOptions}
           onDateChange={setActiveDate}
           onAddSets={addSets}
+          onSaveExercisePreset={saveExercisePreset}
           onUpdateMeta={updateSessionMeta}
           onUpdateSet={updateSet}
           onDeleteSet={deleteSet}
@@ -183,7 +210,9 @@ export default function App() {
       {activeView === "data" && (
         <DataView
           sessions={sessions}
+          exercisePresets={exercisePresets}
           onImportSessions={importSessions}
+          onRestoreBackup={restoreBackup}
           onClear={clearSessions}
           onToast={setToast}
         />

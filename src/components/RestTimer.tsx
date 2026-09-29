@@ -5,9 +5,10 @@ import { formatDuration } from "../lib/workout";
 interface RestTimerProps {
   duration: number;
   startSignal: number;
+  label: string;
 }
 
-export function RestTimer({ duration, startSignal }: RestTimerProps) {
+export function RestTimer({ duration, startSignal, label }: RestTimerProps) {
   const [remaining, setRemaining] = useState(duration);
   const [isRunning, setIsRunning] = useState(false);
   const endAtRef = useRef<number | null>(null);
@@ -61,12 +62,12 @@ export function RestTimer({ duration, startSignal }: RestTimerProps) {
   const progress = duration > 0 ? (remaining / duration) * 100 : 0;
 
   return (
-    <section className={`rest-timer ${isRunning ? "is-running" : ""}`} aria-label="组间休息计时">
+    <section className={`rest-timer ${isRunning ? "is-running" : ""}`} aria-label={`${label}计时`}>
       <div className="rest-timer__bar" style={{ "--progress": `${progress}%` } as React.CSSProperties} />
       <div className="rest-timer__content">
         <div className="rest-timer__label">
           <Timer size={18} />
-          <span>组间休息</span>
+          <span>{label}</span>
         </div>
         <strong>{formatDuration(remaining)}</strong>
         <div className="rest-timer__actions">

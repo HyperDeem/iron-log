@@ -1,4 +1,11 @@
-import type { FailureType, WorkoutSession, WorkoutSet, WorkoutStats } from "../types";
+import type {
+  ExercisePreset,
+  ExerciseSetTemplate,
+  FailureType,
+  WorkoutSession,
+  WorkoutSet,
+  WorkoutStats,
+} from "../types";
 
 export const FAILURE_LABELS: Record<FailureType, string> = {
   set: "每组力竭",
@@ -17,6 +24,7 @@ export const DEFAULT_EXERCISES = [
 ];
 
 export const REST_OPTIONS = [60, 90, 120, 180];
+export const EXERCISE_REST_SECONDS = 300;
 
 export function createId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -70,6 +78,7 @@ export function createWorkoutSet(
   reps: number,
   failureType: FailureType,
   restSeconds: number,
+  note = "",
 ): WorkoutSet {
   return {
     id: createId(),
@@ -78,20 +87,81 @@ export function createWorkoutSet(
     reps,
     failureType,
     restSeconds,
+    note: note.trim() || undefined,
   };
 }
 
-export function buildWorkoutSets(
-  exercise: string,
-  weight: number,
-  reps: number,
-  setCount: number,
-  failureType: FailureType,
-  restSeconds: number,
-): WorkoutSet[] {
-  return Array.from({ length: setCount }, () =>
-    createWorkoutSet(exercise, weight, reps, failureType, restSeconds),
+export function upsertExercisePreset(
+  presets: ExercisePreset[],
+  preset: Omit<ExercisePreset, "updatedAt">,
+): ExercisePreset[] {
+  const name = preset.name.trim();
+  if (!name) return presets;
+
+  const next: ExercisePreset = {
+    ...preset,
+    name,
+    updatedAt: new Date().toISOString(),
+  };
+  return [next, ...presets.filter((item) => item.name !== name)].sort((a, b) =>
+    b.updatedAt.localeCompare(a.updatedAt),
   );
+}
+
+export function getExercisePresetOptions(
+  sessions: WorkoutSession[],
+  storedPresets: ExercisePreset[],
+): ExercisePreset[] {
+  const presets = new Map(storedPresets.map((preset) => [preset.name, preset]));
+
+  for (const session of [...sessions].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))) {
+    for (const group of groupSets(session.sets)) {
+      if (presets.has(group.exercise)) continue;
+
+      const latestSet = group.sets.at(-1);
+      if (!latestSet) continue;
+      const groupRestSet =
+        latestSet.restSeconds === EXERCISE_REST_SECONDS && group.sets.length > 1
+          ? group.sets.at(-2)
+          : latestSet;
+      const template: ExerciseSetTemplate[] = group.sets.map((set) => ({
+        weight: set.weight,
+        reps: set.reps,
+      }));
+      presets.set(group.exercise, {
+        name: group.exercise,
+        setCount: Math.max(1, group.sets.length),
+        failureType: latestSet.failureType,
+        restSeconds: groupRestSet?.restSeconds ?? 90,
+        weight: latestSet.weight,
+        reps: latestSet.reps,
+        sets: template,
+        nextNote: latestSet.note ?? "",
+        updatedAt: session.updatedAt,
+      });
+    }
+  }
+
+  for (const name of DEFAULT_EXERCISES) {
+    if (presets.has(name)) continue;
+    presets.set(name, {
+      name,
+      setCount: 4,
+      failureType: "set",
+      restSeconds: 90,
+      weight: 20,
+      reps: 10,
+      sets: Array.from({ length: 4 }, () => ({ weight: 20, reps: 10 })),
+      nextNote: "",
+      updatedAt: "",
+    });
+  }
+
+  return [...presets.values()].sort((a, b) => {
+    if (!a.updatedAt) return 1;
+    if (!b.updatedAt) return -1;
+    return b.updatedAt.localeCompare(a.updatedAt);
+  });
 }
 
 export function createWorkoutSession(date: string, title = "训练"): WorkoutSession {
@@ -132,13 +202,6 @@ export function getOverallStats(sessions: WorkoutSession[]): WorkoutStats {
     },
     { sessionCount: 0, setCount: 0, totalVolume: 0, totalReps: 0 },
   );
-}
-
-export function getRecentExerciseNames(sessions: WorkoutSession[], fallback = DEFAULT_EXERCISES): string[] {
-  const recent = [...sessions]
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .flatMap((session) => [...session.sets].reverse().map((set) => set.exercise));
-  return [...new Set([...recent, ...fallback])].filter(Boolean).slice(0, 12);
 }
 
 export function groupSets(sets: WorkoutSet[]): Array<{ exercise: string; sets: WorkoutSet[] }> {

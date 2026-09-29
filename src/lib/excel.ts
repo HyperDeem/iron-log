@@ -1,7 +1,7 @@
 import { readSheet } from "read-excel-file/browser";
 import writeXlsxFile from "write-excel-file/browser";
 import type { Cell, SheetData } from "write-excel-file/browser";
-import type { FailureType, ImportResult, WorkoutSession } from "../types";
+import type { ExercisePreset, FailureType, ImportResult, WorkoutSession } from "../types";
 import { createId, groupSets, toDateKey } from "./workout";
 
 type SpreadsheetRow = Record<string, unknown>;
@@ -102,11 +102,23 @@ export function exportWorkoutCsv(sessions: WorkoutSession[]): void {
   downloadBlob(new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" }), `训练日志_${toDateKey()}.csv`);
 }
 
-export function exportBackup(sessions: WorkoutSession[]): void {
+export function exportBackup(sessions: WorkoutSession[], exercisePresets: ExercisePreset[] = []): void {
   downloadBlob(
-    new Blob([JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), sessions }, null, 2)], {
-      type: "application/json",
-    }),
+    new Blob(
+      [
+        JSON.stringify(
+          {
+            version: 2,
+            exportedAt: new Date().toISOString(),
+            sessions,
+            exercisePresets,
+          },
+          null,
+          2,
+        ),
+      ],
+      { type: "application/json" },
+    ),
     `铁记备份_${toDateKey()}.json`,
   );
 }
@@ -192,7 +204,7 @@ function buildDetailRows(sessions: WorkoutSession[]): DetailRow[] {
         每组次数: set.reps,
         力竭类型: set.failureType === "set" ? "每组力竭" : "动作完成力竭",
         "组间休息(秒)": set.restSeconds,
-        备注: session.notes,
+        备注: set.note?.trim() || session.notes,
       })),
     ),
   );

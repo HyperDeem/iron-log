@@ -7,6 +7,7 @@ export interface WorkoutSet {
   reps: number;
   failureType: FailureType;
   restSeconds: number;
+  note?: string;
 }
 
 export interface WorkoutSession {
@@ -17,6 +18,28 @@ export interface WorkoutSession {
   sets: WorkoutSet[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface ExercisePreset {
+  name: string;
+  setCount: number;
+  failureType: FailureType;
+  restSeconds: number;
+  weight: number;
+  reps: number;
+  sets: ExerciseSetTemplate[];
+  nextNote: string;
+  updatedAt: string;
+}
+
+export interface ExerciseSetTemplate {
+  weight: number;
+  reps: number;
+}
+
+export interface BackupData {
+  sessions: WorkoutSession[];
+  exercisePresets: ExercisePreset[];
 }
 
 export interface WorkoutStats {
