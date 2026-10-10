@@ -9,6 +9,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import type {
   ExercisePreset,
   ExerciseSetTemplate,
@@ -525,6 +526,7 @@ function ExerciseCombobox({
   onBlur,
 }: ExerciseComboboxProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const [query, setQuery] = useState("");
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -533,9 +535,30 @@ function ExerciseCombobox({
     .filter((option) => !normalizedQuery || option.name.toLowerCase().includes(normalizedQuery))
     .slice(0, 8);
 
+  const stopEditing = () => {
+    // Blur before applying a preset so the existing onBlur saves the old draft.
+    inputRef.current?.blur();
+    setIsEditing(false);
+  };
+
+  const closeMenu = () => {
+    stopEditing();
+    setIsOpen(false);
+    setQuery("");
+  };
+
+  const startEditing = () => {
+    // Mobile keyboards require an editable focus within the user gesture.
+    flushSync(() => {
+      setIsEditing(true);
+      setIsOpen(true);
+    });
+    inputRef.current?.focus();
+  };
+
   useEffect(() => {
     const closeOnOutsidePress = (event: PointerEvent) => {
-      if (!wrapperRef.current?.contains(event.target as Node)) setIsOpen(false);
+      if (!wrapperRef.current?.contains(event.target as Node)) closeMenu();
     };
     document.addEventListener("pointerdown", closeOnOutsidePress);
     return () => document.removeEventListener("pointerdown", closeOnOutsidePress);
@@ -543,9 +566,9 @@ function ExerciseCombobox({
 
   useEffect(() => {
     if (focusSignal === 0) return;
+    stopEditing();
     setQuery("");
     setIsOpen(true);
-    inputRef.current?.focus();
     wrapperRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [focusSignal]);
 
@@ -557,24 +580,50 @@ function ExerciseCombobox({
           role="combobox"
           aria-expanded={isOpen}
           aria-controls="exercise-options"
+          readOnly={!isEditing}
           value={value}
+          onPointerDown={(event) => {
+            if (!isEditing) event.preventDefault();
+          }}
+          onClick={() => {
+            if (isOpen) startEditing();
+            else {
+              setQuery("");
+              setIsOpen(true);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              startEditing();
+            } else if (event.key === "Escape") {
+              event.preventDefault();
+              closeMenu();
+            }
+          }}
           onChange={(event) => {
             setQuery(event.target.value);
             onChange(event.target.value);
           }}
           onFocus={() => {
-            setQuery("");
+            if (!isOpen) setQuery("");
             setIsOpen(true);
           }}
-          onBlur={onBlur}
+          onBlur={() => {
+            setIsEditing(false);
+            onBlur();
+          }}
           placeholder="例如：哑铃卧推"
           autoComplete="off"
         />
         <button
           type="button"
           aria-label="展开训练项目列表"
+          aria-expanded={isOpen}
+          aria-controls="exercise-options"
           onPointerDown={(event) => event.preventDefault()}
           onClick={() => {
+            stopEditing();
             setQuery("");
             setIsOpen((current) => !current);
           }}
@@ -596,9 +645,8 @@ function ExerciseCombobox({
                 aria-selected={option.name === value}
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => {
+                  closeMenu();
                   onSelect(option);
-                  setQuery("");
-                  setIsOpen(false);
                 }}
               >
                 <span>
