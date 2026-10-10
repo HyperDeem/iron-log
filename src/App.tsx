@@ -1,3 +1,4 @@
+import { clearDrafts } from "./lib/draft";
 import { Dumbbell } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { BottomNav } from "./components/BottomNav";
@@ -150,6 +151,7 @@ export default function App() {
   };
 
   const restoreBackup = (backup: BackupData, message: string) => {
+    clearDrafts();
     setSessions(sortSessions(backup.sessions));
     setExercisePresets(backup.exercisePresets);
     setToast(message);
@@ -157,6 +159,7 @@ export default function App() {
   };
 
   const clearSessions = () => {
+    clearDrafts();
     setSessions([]);
     setExercisePresets([]);
     setToast("本机训练数据和动作预设已清空");
@@ -184,6 +187,7 @@ export default function App() {
 
       {activeView === "record" && (
         <RecordView
+          key={activeDate}
           activeDate={activeDate}
           session={activeSession}
           exerciseOptions={exerciseOptions}

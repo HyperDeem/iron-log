@@ -1,73 +1,87 @@
 import { Pause, Play, RotateCcw, Timer } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useDraftState } from "../lib/draft";
 import { formatDuration } from "../lib/workout";
 
 interface RestTimerProps {
+  date: string;
   duration: number;
   startSignal: number;
   label: string;
 }
 
-export function RestTimer({ duration, startSignal, label }: RestTimerProps) {
-  const [remaining, setRemaining] = useState(duration);
-  const [isRunning, setIsRunning] = useState(false);
-  const endAtRef = useRef<number | null>(null);
+interface TimerDraft {
+  duration: number;
+  label: string;
+  remaining: number;
+  endAt: number | null;
+}
+
+export function RestTimer({ date, duration, startSignal, label }: RestTimerProps) {
+  const [timer, setTimer] = useDraftState<TimerDraft>(date, "timer", {
+    duration, label, remaining: duration, endAt: null,
+  });
+  const [, tick] = useState(0);
+  const lastSignal = useRef(startSignal);
+  const isRunning = timer.endAt !== null && timer.endAt > Date.now();
+  const remaining = timer.endAt === null
+    ? timer.remaining
+    : Math.max(0, Math.ceil((timer.endAt - Date.now()) / 1000));
 
   useEffect(() => {
-    if (!isRunning) {
-      setRemaining(duration);
-    }
-  }, [duration]);
-
-  useEffect(() => {
-    if (!isRunning) return;
-    const interval = window.setInterval(() => {
-      const next = Math.max(0, Math.ceil(((endAtRef.current ?? Date.now()) - Date.now()) / 1000));
-      setRemaining(next);
-      if (next === 0) {
-        setIsRunning(false);
+    if (timer.endAt === null) return;
+    const update = () => {
+      if (timer.endAt! <= Date.now()) {
+        setTimer((current) => ({ ...current, remaining: 0, endAt: null }));
         navigator.vibrate?.([150, 80, 150]);
+      } else {
+        tick((value) => value + 1);
       }
-    }, 250);
+    };
+    update();
+    const interval = window.setInterval(update, 250);
     return () => window.clearInterval(interval);
-  }, [isRunning]);
+  }, [timer.endAt]);
 
   useEffect(() => {
-    if (startSignal === 0) return;
-    setRemaining(duration);
-    endAtRef.current = Date.now() + duration * 1000;
-    setIsRunning(true);
-    // The duration is changed together with the start signal after adding sets.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startSignal]);
+    if (lastSignal.current !== startSignal) {
+      lastSignal.current = startSignal;
+      setTimer({ duration, label, remaining: duration, endAt: Date.now() + duration * 1000 });
+      return;
+    }
+    // Plan changes must not relabel or reset an existing rest period.
+    if (timer.endAt === null && timer.remaining === timer.duration) {
+      setTimer({ duration, label, remaining: duration, endAt: null });
+    }
+  }, [startSignal, duration, label]);
 
   const toggle = () => {
     if (isRunning) {
-      setIsRunning(false);
+      setTimer({ ...timer, remaining, endAt: null });
       return;
     }
-
     const next = remaining > 0 ? remaining : duration;
-    setRemaining(next);
-    endAtRef.current = Date.now() + next * 1000;
-    setIsRunning(true);
+    setTimer({
+      duration: remaining > 0 ? timer.duration : duration,
+      label: remaining > 0 ? timer.label : label,
+      remaining: next,
+      endAt: Date.now() + next * 1000,
+    });
   };
 
   const reset = () => {
-    setRemaining(duration);
-    setIsRunning(false);
-    endAtRef.current = null;
+    setTimer({ duration, label, remaining: duration, endAt: null });
   };
 
-  const progress = duration > 0 ? (remaining / duration) * 100 : 0;
+  const progress = timer.duration > 0 ? (remaining / timer.duration) * 100 : 0;
 
   return (
-    <section className={`rest-timer ${isRunning ? "is-running" : ""}`} aria-label={`${label}计时`}>
+    <section className={`rest-timer ${isRunning ? "is-running" : ""}`} aria-label={`${timer.label}计时`}>
       <div className="rest-timer__bar" style={{ "--progress": `${progress}%` } as React.CSSProperties} />
       <div className="rest-timer__content">
         <div className="rest-timer__label">
           <Timer size={18} />
-          <span>{label}</span>
+          <span>{timer.label}</span>
         </div>
         <strong>{formatDuration(remaining)}</strong>
         <div className="rest-timer__actions">

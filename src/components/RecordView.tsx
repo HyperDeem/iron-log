@@ -30,6 +30,7 @@ import {
   safeNumber,
 } from "../lib/workout";
 import { RestTimer } from "./RestTimer";
+import { useDraftState } from "../lib/draft";
 
 interface RecordViewProps {
   exerciseOptions: ExercisePreset[];
@@ -60,37 +61,27 @@ export function RecordView({
   onDeleteGroup,
   onToast,
 }: RecordViewProps) {
-  const [title, setTitle] = useState(session?.title ?? "训练");
-  const [exercise, setExercise] = useState("");
-  const [weight, setWeight] = useState(40);
-  const [reps, setReps] = useState(12);
-  const [setCount, setSetCount] = useState(4);
-  const [failureType, setFailureType] = useState<FailureType>("exercise");
-  const [restSeconds, setRestSeconds] = useState(90);
-  const [setTemplates, setSetTemplates] = useState<ExerciseSetTemplate[]>([]);
-  const [previousReminder, setPreviousReminder] = useState("");
-  const [nextNoteDraft, setNextNoteDraft] = useState("");
-  const [completedSets, setCompletedSets] = useState(0);
+  const [title, setTitle] = useDraftState(activeDate, "title", session?.title ?? "训练");
+  const [exercise, setExercise] = useDraftState(activeDate, "exercise", "");
+  const [weight, setWeight] = useDraftState(activeDate, "weight", 40);
+  const [reps, setReps] = useDraftState(activeDate, "reps", 12);
+  const [setCount, setSetCount] = useDraftState(activeDate, "setCount", 4);
+  const [failureType, setFailureType] = useDraftState<FailureType>(activeDate, "failureType", "exercise");
+  const [restSeconds, setRestSeconds] = useDraftState(activeDate, "restSeconds", 90);
+  const [setTemplates, setSetTemplates] = useDraftState<ExerciseSetTemplate[]>(activeDate, "setTemplates", []);
+  const [previousReminder, setPreviousReminder] = useDraftState(activeDate, "previousReminder", "");
+  const [nextNoteDraft, setNextNoteDraft] = useDraftState(activeDate, "nextNoteDraft", "");
+  const [completedSets, setCompletedSets] = useDraftState(activeDate, "completedSets", 0);
   const [timerSignal, setTimerSignal] = useState(0);
   const [exerciseFocusSignal, setExerciseFocusSignal] = useState(0);
-  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
-  const [showNotes, setShowNotes] = useState(false);
+  const [expandedGroup, setExpandedGroup] = useDraftState<string | null>(activeDate, "expandedGroup", null);
+  const [showNotes, setShowNotes] = useDraftState(activeDate, "showNotes", false);
   const stats = session ? getSessionStats(session) : { sessionCount: 0, setCount: 0, totalVolume: 0, totalReps: 0 };
   const groups = useMemo(() => groupSets(session?.sets ?? []), [session?.sets]);
   const plannedSetCount = clamp(Math.round(setCount), 1, 20);
   const isExerciseComplete = completedSets >= plannedSetCount;
   const timerDuration = isExerciseComplete ? EXERCISE_REST_SECONDS : restSeconds;
   const timerLabel = isExerciseComplete ? "动作间休息" : "组间休息";
-
-  useEffect(() => {
-    setTitle(session?.title ?? "训练");
-    setExercise("");
-    setSetTemplates([]);
-    setPreviousReminder("");
-    setNextNoteDraft("");
-    setCompletedSets(0);
-    setExpandedGroup(null);
-  }, [activeDate]);
 
   const currentPreset = (noteOverride?: string): Omit<ExercisePreset, "updatedAt"> => {
     const templates = ensureSetTemplates(setTemplates, plannedSetCount, { weight, reps });
@@ -426,6 +417,7 @@ export function RecordView({
       </section>
 
       <RestTimer
+        date={activeDate}
         duration={timerDuration}
         startSignal={timerSignal}
         label={timerLabel}
