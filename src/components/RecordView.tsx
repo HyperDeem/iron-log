@@ -35,6 +35,7 @@ import { useDraftState } from "../lib/draft";
 
 interface RecordViewProps {
   exerciseOptions: ExercisePreset[];
+  recordedExerciseNames: string[];
   activeDate: string;
   session?: WorkoutSession;
   onDateChange: (date: string) => void;
@@ -53,6 +54,7 @@ export function RecordView({
   activeDate,
   session,
   exerciseOptions,
+  recordedExerciseNames,
   onDateChange,
   onAddSets,
   onSaveExercisePreset,
@@ -256,6 +258,7 @@ export function RecordView({
           <ExerciseCombobox
             value={exercise}
             options={exerciseOptions}
+            recordedExerciseNames={recordedExerciseNames}
             focusSignal={exerciseFocusSignal}
             onChange={handleExerciseNameChange}
             onSelect={applyExercisePreset}
@@ -511,6 +514,7 @@ export function RecordView({
 interface ExerciseComboboxProps {
   value: string;
   options: ExercisePreset[];
+  recordedExerciseNames: string[];
   focusSignal: number;
   onChange: (value: string) => void;
   onSelect: (preset: ExercisePreset) => void;
@@ -520,6 +524,7 @@ interface ExerciseComboboxProps {
 function ExerciseCombobox({
   value,
   options,
+  recordedExerciseNames,
   focusSignal,
   onChange,
   onSelect,
@@ -531,9 +536,11 @@ function ExerciseCombobox({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const normalizedQuery = query.trim().toLowerCase();
+  const recordedNames = new Set(recordedExerciseNames);
   const filteredOptions = options
-    .filter((option) => !normalizedQuery || option.name.toLowerCase().includes(normalizedQuery))
-    .slice(0, 8);
+    .filter((option) => !normalizedQuery ||
+      (recordedNames.has(option.name) && option.name.toLowerCase().includes(normalizedQuery)))
+    .sort((a, b) => Number(recordedNames.has(b.name)) - Number(recordedNames.has(a.name)));
 
   const stopEditing = () => {
     // Blur before applying a preset so the existing onBlur saves the old draft.
@@ -635,7 +642,9 @@ function ExerciseCombobox({
       {isOpen && (
         <div className="exercise-combobox__menu" id="exercise-options" role="listbox">
           {filteredOptions.length === 0 ? (
-            <div className="exercise-combobox__empty">输入新名称并完成一组后会自动记住</div>
+            <div className="exercise-combobox__empty">
+              {normalizedQuery ? "没有匹配的已练动作，输入新名称并完成一组后会自动记住" : "输入新名称并完成一组后会自动记住"}
+            </div>
           ) : (
             filteredOptions.map((option) => (
               <button
@@ -649,13 +658,7 @@ function ExerciseCombobox({
                   onSelect(option);
                 }}
               >
-                <span>
-                  <strong>{option.name}</strong>
-                  <small>
-                    {option.setCount}组 · {formatNumber(option.weight)}kg × {option.reps} ·{" "}
-                    {formatRestLabel(option.restSeconds)} · {FAILURE_LABELS[option.failureType]}
-                  </small>
-                </span>
+                <strong title={option.name}>{option.name}</strong>
                 {option.name === value && <Check size={17} />}
               </button>
             ))

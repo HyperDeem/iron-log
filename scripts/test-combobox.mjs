@@ -8,7 +8,7 @@ let slots = [], cursor = 0, pending = [], tree, input, arrow, focused = false, f
 const listeners = new Map();
 let changed = '', selected = '', blurred = 0;
 const props = {
-  value: '', focusSignal: 0,
+  value: '', focusSignal: 0, recordedExerciseNames: ['卧推'],
   options: [{ name: '卧推', setCount: 4, weight: 40, reps: 12, restSeconds: 90, failureType: 'set' }],
   onChange: value => { changed = value; props.value = value; },
   onSelect: preset => { selected = preset.name; props.value = preset.name; },
@@ -109,4 +109,29 @@ assert.equal(focused, false, 'next exercise opens without keyboard');
 clickInput();
 assert.equal(focused, true);
 assert.ok(blurred > 0, 'existing blur callback remains active');
-console.log('Combobox interaction regression checks passed.');
+outside();
+const preset = props.options[0];
+props.options = [
+  { ...preset, name: '站姿划船' },
+  { ...preset, name: '坐姿划船' },
+  ...Array.from({ length: 18 }, (_, i) => ({ ...preset, name: `已练动作${i + 1}` })),
+];
+props.recordedExerciseNames = ['坐姿划船', ...Array.from({ length: 18 }, (_, i) => `已练动作${i + 1}`)];
+clickArrow();
+let entries = tree.props.children[1].props.children;
+assert.equal(entries.length, 20, 'all options remain reachable beyond the previous eight-item limit');
+assert.equal(entries[0].props.children[0].props.children, '坐姿划船', 'recorded exercises precede unrecorded presets');
+assert.equal(entries[0].props.children[0].type, 'strong', 'option shows name without parameter details');
+clickInput();
+input.props.onChange({ target: { value: '划船' } }); render();
+entries = tree.props.children[1].props.children;
+assert.equal(entries.length, 1);
+assert.equal(entries[0].props.children[0].props.children, '坐姿划船', 'search excludes names without workout records');
+input.props.onChange({ target: { value: '已练动作' } }); render();
+assert.equal(tree.props.children[1].props.children.length, 18, 'search results are not truncated');
+input.props.onChange({ target: { value: '全新动作' } }); render();
+assert.equal(changed, '全新动作', 'new names can still be entered');
+assert.equal(tree.props.children[1].props.children.type, 'div', 'unrecorded names yield the empty hint');
+input.props.onChange({ target: { value: '' } }); render();
+assert.equal(tree.props.children[1].props.children.length, 20, 'clearing search restores full list');
+console.log('Combobox interaction and recorded-exercise search regression checks passed.');

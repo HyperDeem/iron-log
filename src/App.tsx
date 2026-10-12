@@ -31,6 +31,10 @@ export default function App() {
     () => getExercisePresetOptions(sessions, exercisePresets),
     [exercisePresets, sessions],
   );
+  const recordedExerciseNames = useMemo(
+    () => [...new Set(sessions.flatMap((session) => session.sets.map((set) => set.exercise.trim())))],
+    [sessions],
+  );
 
   useEffect(() => {
     saveSessions(sessions);
@@ -191,6 +195,7 @@ export default function App() {
           activeDate={activeDate}
           session={activeSession}
           exerciseOptions={exerciseOptions}
+          recordedExerciseNames={recordedExerciseNames}
           onDateChange={setActiveDate}
           onAddSets={addSets}
           onSaveExercisePreset={saveExercisePreset}
